@@ -13,13 +13,14 @@ fn main() {
     enum Token {
         Return,
         Void,
+        Int,
         Semicolon,
         OpeningBrace,
         ClosingBrace,
         OpeningParenthesis,
         ClosingParenthesis,
-        Identifier,
-        Constant,
+        Identifier(String),
+        Constant(i32),
     }
     let mut Tokens: Vec<Token> = Vec::new();
     fn remove_from_string(target_string: &mut String, string_to_remove: &str) {
@@ -28,10 +29,11 @@ fn main() {
         return;
     }
     fn Tokenize(string: &mut String, TokenList: &mut Vec<Token>) {
-        //Regex builders
+        //-----------------------Regex builders---------------------
         let void = Regex::new(r"^(?<match>([ ]+)?void)\b").unwrap();
-        let constant = Regex::new(r"^(?<match>([ ]+)?[0-9]+)\b").unwrap();
-        let identifier = Regex::new(r"^(?<match>([ ]+)?[a-zA-Z]+)\b").unwrap();
+        let constant = Regex::new(r"^(?<match>([ ]+)?(?<actual>[0-9]+))\b").unwrap();
+        let identifier = Regex::new(r"^(?<match>([ ]+)?(?<actual>[a-zA-Z]+))\b").unwrap();
+        let intKeyword = Regex::new(r"^(?<match>([ ]+)?int)\b").unwrap();
         let returnKeyword = Regex::new(r"^(?<match>([ ]+)?return)\b").unwrap();
         let closingParenthesis = Regex::new(r"^(?<match>([ ]+)?\))").unwrap();
         let openingParenthesis = Regex::new(r"^(?<match>([ ]+)?\()").unwrap();
@@ -46,7 +48,16 @@ fn main() {
                 return;
             };
             capture = cap["match"].to_string();
-            TokenList.push(Token::Constant);
+
+            //I am the best programmer on earth
+            let number = cap["actual"].to_string();
+            match number.parse::<i32>() {
+                Ok(num) => {
+                    println!("ok");
+                    TokenList.push(Token::Constant(num));
+                }
+                _ => println!("Not ok"),
+            }
             //println!("Token: Const");
         } else if closingParenthesis.is_match(string) {
             let Some(cap) = closingParenthesis.captures(string) else {
@@ -100,7 +111,12 @@ fn main() {
                     return;
                 };
                 //println!("Token: Return");
+            } else if intKeyword.is_match(&cap["match"]) {
+                //Int Keyword
+                TokenList.push(Token::Int);
             } else {
+                let value: String = cap["actual"].to_string();
+                TokenList.push(Token::Identifier(value));
                 //println!("Token: identifier");
             }
             // Case where all keywords are exhausted
@@ -126,9 +142,67 @@ fn main() {
     // !! Note: This is not type safe because rust doesn't allow recursive enums!!
     enum ASTNode {
         Constant(i32),
-        Expression(Box<ASTNode>), //Needs Constant
-        Function(Box<ASTNode>),   // Needs Expression
-        Program(Box<ASTNode>),    // Needs Function
+        Expression(Box<ASTNode>),             //Needs Constant
+        Function(Box<ASTNode>, Box<ASTNode>), // Needs Return
+        Program(Box<ASTNode>),                // Needs Function
+        Return(Box<ASTNode>),                 // Needs Expression
+        Identifier(String),
+    }
+
+    //-----------Formal grammer rulesets for basic parser------
+    //<Program> ::= <Function>
+    //<Function> ::= "int" <Identifier> "(" "void" ")" "{" <statement> "}"
+    //<Statement> ::= "return" <Exp> ";"
+    //<Exp> ::= <Int>
+    //<Identifier> ::= ? An identifier token ?
+    //<Int> ::= ? A constant token ?
+    //Each < > is a funciton and each ?? or "" is a Token
+
+    fn expect(expected: Token, tokens: &Vec<Token>) {
+        println!("expected {:?}", expected)
+    }
+
+    fn parse_int(Tokens: &Vec<Token>) -> ASTNode {
+        //expect(Token::Constant(10), Tokens);
+        match &Tokens[0] {
+            Token::Constant(value) => ASTNode::Constant(*value),
+            other => panic!("expected Constant but found {:?}", other),
+        }
+    }
+
+    fn parse_identifier(Tokens: &Vec<Token>) -> ASTNode {
+        match &Tokens[0] {
+            Token::Identifier(value) => ASTNode::Identifier(String::from(value)),
+            other => panic!(
+                "Invalid Identifier! expected Identifier and got {:?}",
+                other
+            ),
+        }
+    }
+    fn parse_expression(Tokens: &Vec<Token>) -> ASTNode {
+        match Tokens[0] {
+            Token::Constant(value) => ASTNode::Expression(Box::new(ASTNode::Constant(value))),
+            _ => panic!("Invalid Expression!"),
+        }
+    }
+    fn parse_statement(Tokens: &Vec<Token>) -> ASTNode {
+        expect(Token::Return, &Tokens);
+        let return_val: Box<ASTNode> = Box::new(parse_expression(Tokens));
+        expect(Token::Semicolon, &Tokens);
+        return ASTNode::Return(return_val);
+    }
+
+    fn parse_function(Tokens: Vec<Token>) -> ASTNode {
+        //expect(Token::Identifier(String::from("Hi")), &Tokens);
+        expect(Token::Int, &Tokens);
+        let Identifier: ASTNode = parse_identifier(&Tokens);
+        expect(Token::OpeningParenthesis, &Tokens);
+        expect(Token::Void, &Tokens);
+        expect(Token::ClosingParenthesis, &Tokens);
+        expect(Token::OpeningBrace, &Tokens);
+        let Statement: ASTNode = parse_statement(&Tokens);
+        expect(Token::ClosingBrace, &Tokens);
+        ASTNode::Function(Box::new(Identifier), Box::new(Statement))
     }
 
     //====================================================
@@ -142,4 +216,7 @@ fn main() {
         Tokenize(&mut test_string, &mut Tokens);
     }
     println!("Token List {:?}", Tokens);
+
+    parse_expression(&Vec::from([Token::Constant(32)]));
+    //   expect(Token::Void, Vec::from([Token::Void]));
 }
