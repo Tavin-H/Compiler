@@ -9,7 +9,7 @@ fn main() {
     //=======================================================
     //                         LEXER
     //=======================================================
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq)]
     enum Token {
         Return,
         Void,
@@ -89,10 +89,10 @@ fn main() {
             TokenList.push(Token::ClosingBrace);
             //println!("Token: closing brace");
         } else if semicolon.is_match(string) {
-            //FIXME
             let Some(cap) = semicolon.captures(string) else {
                 return;
             };
+            TokenList.push(Token::Semicolon);
             capture = cap["match"].to_string();
             //println!("Token: semicolon");
         } else if identifier.is_match(string) {
@@ -106,10 +106,12 @@ fn main() {
                     return;
                 };
                 //println!("Token: Void");
+                TokenList.push(Token::Void);
             } else if returnKeyword.is_match(&cap["match"]) {
                 let Some(cap2) = returnKeyword.captures(string) else {
                     return;
                 };
+                TokenList.push(Token::Return);
                 //println!("Token: Return");
             } else if intKeyword.is_match(&cap["match"]) {
                 //Int Keyword
@@ -140,6 +142,7 @@ fn main() {
 
     //Parser code goes here
     // !! Note: This is not type safe because rust doesn't allow recursive enums!!
+    #[derive(Debug)]
     enum ASTNode {
         Constant(i32),
         Expression(Box<ASTNode>),             //Needs Constant
@@ -158,8 +161,19 @@ fn main() {
     //<Int> ::= ? A constant token ?
     //Each < > is a funciton and each ?? or "" is a Token
 
-    fn expect(expected: Token, tokens: &Vec<Token>) {
-        println!("expected {:?}", expected)
+    fn expect(expected: Token, Tokens: &mut Vec<Token>) {
+        println!("expected {:?}", expected);
+        println!("Tokens: {:?}", Tokens);
+        println!("Removed {:?} at expect", Tokens.remove(0));
+        println!(" ");
+
+        /*if Tokens[0] != expected {
+            panic!(
+                "Invalid sytnax! Expected: {:?} but found: {:?}",
+                expected, Tokens[0]
+            );
+        }*/
+        //Tokens.remove(0);
     }
 
     fn parse_int(Tokens: &Vec<Token>) -> ASTNode {
@@ -170,53 +184,87 @@ fn main() {
         }
     }
 
-    fn parse_identifier(Tokens: &Vec<Token>) -> ASTNode {
-        match &Tokens[0] {
-            Token::Identifier(value) => ASTNode::Identifier(String::from(value)),
+    fn parse_identifier(Tokens: &mut Vec<Token>) -> ASTNode {
+        let temp: Token = Tokens.remove(0); // Rust is weird
+        match temp {
+            Token::Identifier(value) => ASTNode::Identifier(value),
             other => panic!(
                 "Invalid Identifier! expected Identifier and got {:?}",
                 other
             ),
         }
     }
-    fn parse_expression(Tokens: &Vec<Token>) -> ASTNode {
-        match Tokens[0] {
+    fn parse_expression(Tokens: &mut Vec<Token>) -> ASTNode {
+        //println!("token at expression parsing {:?}", Tokens);
+        let temp: Token = Tokens.remove(0);
+
+        match temp {
             Token::Constant(value) => ASTNode::Expression(Box::new(ASTNode::Constant(value))),
-            _ => panic!("Invalid Expression!"),
+            other => {
+                panic!(
+                    "Invalid Expression! Expected: Expression but found {:?}",
+                    other
+                )
+            }
         }
     }
-    fn parse_statement(Tokens: &Vec<Token>) -> ASTNode {
-        expect(Token::Return, &Tokens);
+    fn parse_statement(Tokens: &mut Vec<Token>) -> ASTNode {
+        expect(Token::Return, Tokens);
         let return_val: Box<ASTNode> = Box::new(parse_expression(Tokens));
-        expect(Token::Semicolon, &Tokens);
+
+        expect(Token::Semicolon, Tokens);
         return ASTNode::Return(return_val);
     }
 
-    fn parse_function(Tokens: Vec<Token>) -> ASTNode {
-        //expect(Token::Identifier(String::from("Hi")), &Tokens);
-        expect(Token::Int, &Tokens);
-        let Identifier: ASTNode = parse_identifier(&Tokens);
-        expect(Token::OpeningParenthesis, &Tokens);
-        expect(Token::Void, &Tokens);
-        expect(Token::ClosingParenthesis, &Tokens);
-        expect(Token::OpeningBrace, &Tokens);
-        let Statement: ASTNode = parse_statement(&Tokens);
-        expect(Token::ClosingBrace, &Tokens);
+    fn parse_function(Tokens: &mut Vec<Token>) -> ASTNode {
+        expect(Token::Int, Tokens);
+        let Identifier: ASTNode = parse_identifier(Tokens);
+        expect(Token::OpeningParenthesis, Tokens);
+        expect(Token::Void, Tokens);
+        expect(Token::ClosingParenthesis, Tokens);
+        expect(Token::OpeningBrace, Tokens);
+        let Statement: ASTNode = parse_statement(Tokens);
+        //println!("Parse function removed: {:?}", Tokens.remove(0));
+        expect(Token::ClosingBrace, Tokens);
         ASTNode::Function(Box::new(Identifier), Box::new(Statement))
+    }
+
+    fn parse_program(Tokens: &mut Vec<Token>) -> ASTNode {
+        let function: ASTNode = parse_function(Tokens);
+        return ASTNode::Program(Box::new(function));
+    }
+
+    //====================================================
+    //                Assembly Generation
+    //====================================================
+    enum ACon {
+        // Assmebly Construct
+        Function(String, Vec<Instruction>),
+        Operand(Operand),
+        Instruction(Instruction),
+    }
+    enum Operand {
+        Register(Register),
+        Imm(i32),
+    }
+    enum Register {
+        EAX,
+    }
+    enum Instruction {
+        Mov(Operand, Operand),
+        Ret,
     }
 
     //====================================================
     //                      Testing
     //====================================================
-    let mut test_string = String::from("void return hi 123 () {} ;  ");
+    let mut test_string = String::from("int main(void) { return 2; }");
     println!("code: {}", test_string);
     while !test_string.is_empty() {
-        //println!("code: {}", test_string);
-
         Tokenize(&mut test_string, &mut Tokens);
     }
     println!("Token List {:?}", Tokens);
 
-    parse_expression(&Vec::from([Token::Constant(32)]));
+    println!("{:?}", parse_program(&mut Tokens));
     //   expect(Token::Void, Vec::from([Token::Void]));
 }
