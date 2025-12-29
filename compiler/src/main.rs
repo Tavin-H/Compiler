@@ -1,4 +1,6 @@
 #![allow(warnings)]
+use std::panic;
+
 use regex::Regex;
 
 //TODO test with info on page 51 in textbook
@@ -34,7 +36,7 @@ fn main() {
         let constant = Regex::new(r"^(?<match>([ ]+)?(?<actual>[0-9]+))\b").unwrap();
         let identifier = Regex::new(r"^(?<match>([ ]+)?(?<actual>[a-zA-Z]+))\b").unwrap();
         let intKeyword = Regex::new(r"^(?<match>([ ]+)?int)\b").unwrap();
-        let returnKeyword = Regex::new(r"^(?<match>([ ]+)?return)\b").unwrap();
+        let returnKeyword = Regex::new(r"^(?<match>(\n)?([ ]+)?return)\b").unwrap();
         let closingParenthesis = Regex::new(r"^(?<match>([ ]+)?\))").unwrap();
         let openingParenthesis = Regex::new(r"^(?<match>([ ]+)?\()").unwrap();
         let openingBrace = Regex::new(r"^(?<match>([ ]+)?\{)").unwrap();
@@ -145,10 +147,13 @@ fn main() {
     #[derive(Debug)]
     enum ASTNode {
         Constant(i32),
-        Expression(Box<ASTNode>),             //Needs Constant
-        Function(Box<ASTNode>, Box<ASTNode>), // Needs Return
-        Program(Box<ASTNode>),                // Needs Function
-        Return(Box<ASTNode>),                 // Needs Expression
+        Expression(Box<ASTNode>), //Needs Constant
+        Function {
+            name: Box<ASTNode>,
+            definition: Box<ASTNode>,
+        }, // Needs Return
+        Program(Box<ASTNode>),    // Needs Function
+        Return(Box<ASTNode>),     // Needs Expression
         Identifier(String),
     }
 
@@ -162,22 +167,21 @@ fn main() {
     //Each < > is a funciton and each ?? or "" is a Token
 
     fn expect(expected: Token, Tokens: &mut Vec<Token>) {
-        println!("expected {:?}", expected);
+        /*println!("expected {:?}", expected);
         println!("Tokens: {:?}", Tokens);
         println!("Removed {:?} at expect", Tokens.remove(0));
         println!(" ");
-
-        /*if Tokens[0] != expected {
+        */
+        if Tokens[0] != expected {
             panic!(
                 "Invalid sytnax! Expected: {:?} but found: {:?}",
                 expected, Tokens[0]
             );
-        }*/
-        //Tokens.remove(0);
+        }
+        Tokens.remove(0);
     }
 
     fn parse_int(Tokens: &Vec<Token>) -> ASTNode {
-        //expect(Token::Constant(10), Tokens);
         match &Tokens[0] {
             Token::Constant(value) => ASTNode::Constant(*value),
             other => panic!("expected Constant but found {:?}", other),
@@ -195,9 +199,7 @@ fn main() {
         }
     }
     fn parse_expression(Tokens: &mut Vec<Token>) -> ASTNode {
-        //println!("token at expression parsing {:?}", Tokens);
         let temp: Token = Tokens.remove(0);
-
         match temp {
             Token::Constant(value) => ASTNode::Expression(Box::new(ASTNode::Constant(value))),
             other => {
@@ -224,9 +226,11 @@ fn main() {
         expect(Token::ClosingParenthesis, Tokens);
         expect(Token::OpeningBrace, Tokens);
         let Statement: ASTNode = parse_statement(Tokens);
-        //println!("Parse function removed: {:?}", Tokens.remove(0));
         expect(Token::ClosingBrace, Tokens);
-        ASTNode::Function(Box::new(Identifier), Box::new(Statement))
+        ASTNode::Function {
+            name: Box::new(Identifier),
+            definition: Box::new(Statement),
+        }
     }
 
     fn parse_program(Tokens: &mut Vec<Token>) -> ASTNode {
@@ -239,6 +243,7 @@ fn main() {
     //====================================================
     enum ACon {
         // Assmebly Construct
+        Program(Box<ACon>), //Needs Function
         Function(String, Vec<Instruction>),
         Operand(Operand),
         Instruction(Instruction),
@@ -255,10 +260,28 @@ fn main() {
         Ret,
     }
 
+    fn a_parse_program(program: ASTNode) {
+        match program {
+            ASTNode::Program(function) => {
+                a_parse_function(*function);
+            }
+            _ => panic!("unexpected error"),
+        }
+    }
+    fn a_parse_function(function: ASTNode) {
+        match function
+            ASTNode::Function{name, definition} => {
+                ACon(name, Vec::from())
+            }
+            _ => panic!("unexpected error")
+        }
+    }
+
+
     //====================================================
     //                      Testing
     //====================================================
-    let mut test_string = String::from("int main(void) { return 2; }");
+    let mut test_string = String::from("int main(void) {return 2;}");
     println!("code: {}", test_string);
     while !test_string.is_empty() {
         Tokenize(&mut test_string, &mut Tokens);
